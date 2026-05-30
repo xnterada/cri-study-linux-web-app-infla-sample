@@ -1,0 +1,108 @@
+{
+    "QueryLanguage": "JSONata",
+    "Comment": "A description of my state machine",
+    "StartAt": "Initialize",
+    "States": {
+        "Initialize": {
+            "Type": "Pass",
+            "Assign": {
+                "checkCount": 0,
+                "InstanceIds": "{% $states.input.InstanceIds %}"
+            },
+            "Next": "StartInstances"
+        },
+        "StartInstances": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:ec2:startInstances",
+            "Arguments": {
+                "InstanceIds": "{% $InstanceIds %}"
+            },
+            "Next": "Wait"
+        },
+        "Wait": {
+            "Type": "Wait",
+            "Seconds": 20,
+            "Next": "GetInstanceStatus"
+        },
+        "GetInstanceStatus": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:ec2:describeInstances",
+            "Arguments": {
+                "InstanceIds": "{% $InstanceIds %}"
+            },
+            "Assign": {
+                "checkCount": "{% $checkCount + 1 %}"
+            },
+            "Output": {
+                "instanceState": "{% $states.result.Reservations[0].Instances[0].State.Name %}"
+            },
+            "Next": "IsInstanceRunning"
+        },
+        "IsInstanceRunning": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Condition": "{% $states.input.instanceState = 'running' %}",
+                    "Next": "GetInstancePublicIpAddress"
+                },
+                {
+                    "Condition": "{% $checkCount > 5 %}",
+                    "Next": "MaxRetriesReached"
+                }
+            ],
+            "Default": "Wait"
+        },
+        "MaxRetriesReached": {
+            "Type": "Fail",
+            "Error": "MaxRetriesExceeded"
+        },
+        "GetInstancePublicIpAddress": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:ec2:describeInstances",
+            "Arguments": {
+                "InstanceIds": "{% $InstanceIds %}"
+            },
+            "Assign": {
+                "instanceIpAddress": "{% $states.result.Reservations[0].Instances[0].PublicIpAddress %}"
+            },
+            "Next": "ChangeResourceRecordSets"
+        },
+        "ChangeResourceRecordSets": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:route53:changeResourceRecordSets",
+            "Arguments": {
+                "ChangeBatch": {
+                    "Changes": [
+                        {
+                            "Action": "UPSERT",
+                            "ResourceRecordSet": {
+                                "Name": "${domain_name}",
+                                "Type": "A",
+                                "Ttl": 300,
+                                "ResourceRecords": [
+                                    {
+                                        "Value": "{% $instanceIpAddress %}"
+                                    }
+                                ],
+                                "Failover": "PRIMARY",
+                                "HealthCheckId": "${health_check_id}",
+                                "SetIdentifier": "primary"
+                            }
+                        }
+                    ]
+                },
+                "HostedZoneId": "${hosted_zone_id}"
+            },
+            "Next": "UpdateHealthCheck"
+        },
+        "UpdateHealthCheck": {
+            "Type": "Task",
+            "Arguments": {
+                "HealthCheckId": "${health_check_id}",
+                "IpAddress": "{% $instanceIpAddress %}"
+            },
+            "Resource": "arn:aws:states:::aws-sdk:route53:updateHealthCheck",
+            "End": true
+        }
+    }
+}

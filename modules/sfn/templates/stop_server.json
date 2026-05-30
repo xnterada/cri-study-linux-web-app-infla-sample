@@ -1,0 +1,23 @@
+{
+    "QueryLanguage": "JSONata",
+    "Comment": "A description of my state machine",
+    "StartAt": "Initialize",
+    "States": {
+        "Initialize": {
+            "Type": "Pass",
+            "Assign": {
+                "checkCount": 0,
+                "InstanceIds": "{% $states.input.InstanceIds %}"
+            },
+            "Next": "StopInstances"
+        },
+        "StopInstances": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:ec2:stopInstances",
+            "Arguments": {
+                "InstanceIds": "{% $InstanceIds %}"
+            },
+            "End": true
+        }
+    }
+}
