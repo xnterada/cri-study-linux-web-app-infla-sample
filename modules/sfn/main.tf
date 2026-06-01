@@ -75,8 +75,8 @@ resource "aws_scheduler_schedule" "start_server" {
     mode = "OFF"
   }
 
-  # 日本時間 07:00
-  schedule_expression          = "cron(10 7 * * ? *)"
+  # 日本時間 09:00
+  schedule_expression          = "cron(0 9 * * ? *)"
   schedule_expression_timezone = "Asia/Tokyo"
 
   target {
